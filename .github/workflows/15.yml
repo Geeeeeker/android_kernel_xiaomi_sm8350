@@ -1,4 +1,4 @@
-name: 编译umi内核
+name: 编译venus内核
 
 on:
   push:
