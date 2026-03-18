@@ -144,7 +144,6 @@ jobs:
 
           # 添加弱符号定义，解决 get_hw_version_platform 和 get_hw_country_version 未定义问题
           if [ -f drivers/soc/qcom/icnss2/qmi.c ]; then
-            # 检查是否已经添加过弱符号，避免重复添加
             if ! grep -q "__weak.*get_hw_version_platform" drivers/soc/qcom/icnss2/qmi.c; then
               echo -e "\n/* Weak symbols added by build script to fix undefined references */" >> drivers/soc/qcom/icnss2/qmi.c
               echo "#include <linux/types.h>" >> drivers/soc/qcom/icnss2/qmi.c
@@ -158,7 +157,6 @@ jobs:
         working-directory: kernel
         run: |
           if [ -f drivers/staging/qcacld-3.0/core/hdd/src/wlan_hdd_main.c ]; then
-            # 给未使用的静态函数添加 __maybe_unused 属性
             sed -i 's/static int  wlan_hdd_state_ctrl_param_create(/static int __maybe_unused wlan_hdd_state_ctrl_param_create(/' drivers/staging/qcacld-3.0/core/hdd/src/wlan_hdd_main.c
           fi
 
@@ -224,6 +222,32 @@ jobs:
           CONFIG_QCOM_RPROC_COMMON=y
           EOF
 
+          # 添加显示驱动相关配置（解决触摸屏模块缺失的符号）
+          cat >> .config << 'EOF'
+          # 基础显示驱动
+          CONFIG_DRM=y
+          CONFIG_DRM_MSM=y
+          CONFIG_DRM_MSM_DSI=y
+          CONFIG_DRM_MSM_DSI_PHY=y
+          CONFIG_DRM_PANEL=y
+
+          # 传统帧缓冲
+          CONFIG_FB=y
+          CONFIG_FB_MSM=y
+          CONFIG_FB_MSM_MDSS=y
+          CONFIG_FB_MSM_MDSS_DSI=y
+
+          # 小米显示扩展
+          CONFIG_MI_DISP=y
+          CONFIG_MI_DISP_FOD=y
+          CONFIG_MI_DISP_FOD_HBM=y
+          CONFIG_MI_DISP_FOD_MONITOR=y
+          CONFIG_DRM_MSM_MI_DISP=y
+
+          # 厂商通用选项
+          CONFIG_MACH_XIAOMI=y
+          EOF
+
           # 3. 运行 olddefconfig 自动处理依赖
           make -j$(nproc --all) \
             CC="ccache clang" \
@@ -237,7 +261,7 @@ jobs:
 
           # 4. 调试：打印关键选项的最终状态
           echo "===== 关键配置状态 ====="
-          grep -E "(ARCH_QCOM|QCOM_SMEM|QCOM_SMD|QCOM_SMP2P|QCOM_IPC_LOGGING|QCOM_QMI_HELPERS|QRTR|QCOM_SOCINFO|QCOM_SYSFS|QCOM_WCNSS_CTRL|QCOM_WCNSS_CTRL_PCIE|CNSS_UTILS|CNSS2|ICNSS2|ICNSS2_PLATFORM|MSM_PIL|MSM_SSR|QCOM_PIL_INFO|MSM_SUBSYSTEM_RESTART|QCOM_RPROC_COMMON)" .config
+          grep -E "(ARCH_QCOM|QCOM_SMEM|QCOM_SMD|QCOM_SMP2P|QCOM_IPC_LOGGING|QCOM_QMI_HELPERS|QRTR|QCOM_SOCINFO|QCOM_SYSFS|QCOM_WCNSS_CTRL|QCOM_WCNSS_CTRL_PCIE|CNSS_UTILS|CNSS2|ICNSS2|ICNSS2_PLATFORM|MSM_PIL|MSM_SSR|QCOM_PIL_INFO|MSM_SUBSYSTEM_RESTART|QCOM_RPROC_COMMON|DRM_MSM|FB_MSM|MI_DISP|MACH_XIAOMI)" .config
           echo "========================="
 
       - name: 编译内核
@@ -247,7 +271,6 @@ jobs:
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=$(date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y")
-          # 临时禁用 -Werror，避免警告终止编译
           export KBUILD_CFLAGS="-Wno-error"
           make -j$(nproc --all) \
             CC="ccache clang" \
@@ -268,7 +291,6 @@ jobs:
           ls -la out/arch/arm64/boot/
           ls -la out/arch/arm64/boot/dts/ || echo "没有 dts 目录"
           
-          # 首先尝试查找已存在的 dtb 文件
           DTB_FILES=$(find out -name "*.dtb" 2>/dev/null || true)
           if [ -z "$DTB_FILES" ]; then
             echo "未找到任何 dtb 文件，尝试编译设备树..."
@@ -281,25 +303,17 @@ jobs:
             exit 1
           fi
           
-          echo "找到以下 dtb 文件："
-          echo "$DTB_FILES"
-          
-          # 根据设备名 venus 选择 dtb 文件
           VENUS_DTB=$(echo "$DTB_FILES" | grep -E "venus|sm8250" | head -n1)
           if [ -z "$VENUS_DTB" ]; then
-            # 如果没有匹配的，取第一个 dtb
             VENUS_DTB=$(echo "$DTB_FILES" | head -n1)
             echo "警告：未找到包含 venus 或 sm8250 的 dtb 文件，使用第一个 dtb: $VENUS_DTB"
           else
             echo "找到匹配的设备树文件：$VENUS_DTB"
           fi
           
-          # 如果 Image.gz-dtb 不存在，手动创建
           if [ ! -f out/arch/arm64/boot/Image.gz-dtb ]; then
             echo "生成 Image.gz-dtb..."
-            # 压缩 Image 为 Image.gz
             gzip -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.gz
-            # 合并
             cat out/arch/arm64/boot/Image.gz "$VENUS_DTB" > out/arch/arm64/boot/Image.gz-dtb
             echo "已生成 out/arch/arm64/boot/Image.gz-dtb"
           else
