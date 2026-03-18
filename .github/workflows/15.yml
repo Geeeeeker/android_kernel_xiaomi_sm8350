@@ -124,6 +124,18 @@ jobs:
         run: |
           DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"
           
+          # 彻底禁用 KVM 和 VIRTUALIZATION
+          sed -i '/CONFIG_KVM/d' $DEFCONFIG
+          sed -i '/CONFIG_VIRTUALIZATION/d' $DEFCONFIG
+          echo "# CONFIG_KVM is not set" >> $DEFCONFIG
+          echo "# CONFIG_VIRTUALIZATION is not set" >> $DEFCONFIG
+          
+          # 彻底禁用 VFIO 及其相关选项
+          sed -i '/CONFIG_VFIO/d' $DEFCONFIG
+          sed -i '/CONFIG_VFIO_PCI/d' $DEFCONFIG
+          echo "# CONFIG_VFIO is not set" >> $DEFCONFIG
+          echo "# CONFIG_VFIO_PCI is not set" >> $DEFCONFIG
+          
           # 启用 MMU_NOTIFIER
           echo "CONFIG_MMU_NOTIFIER=y" >> $DEFCONFIG
 
@@ -131,13 +143,24 @@ jobs:
           echo "CONFIG_ANDROID_VENDOR_HOOKS=y" >> $DEFCONFIG
           echo "CONFIG_TRACEPOINTS=y" >> $DEFCONFIG
 
-      # ===== 新增：修复 icnss2 驱动编译错误 =====
-      - name: 修复 icnss2 驱动编译错误
+      # ===== 修复 icnss2 驱动编译错误及链接问题 =====
+      - name: 修复 icnss2 驱动编译错误及链接问题
         working-directory: kernel
         run: |
           DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"
           
-          # 尝试启用可能需要的配置选项（如果存在）
+          # 启用可能需要的配置选项（解决链接时未定义符号）
+          echo "CONFIG_QCOM_QMI_HELPERS=y" >> $DEFCONFIG
+          echo "CONFIG_ARCH_QCOM=y" >> $DEFCONFIG
+          echo "CONFIG_QCOM_SMEM=y" >> $DEFCONFIG
+          echo "CONFIG_QCOM_SMD=y" >> $DEFCONFIG
+          echo "CONFIG_QCOM_SMP2P=y" >> $DEFCONFIG
+          echo "CONFIG_QCOM_IPC_LOGGING=y" >> $DEFCONFIG
+          echo "CONFIG_ICNSS2_PLATFORM=y" >> $DEFCONFIG 2>/dev/null || true
+          echo "CONFIG_MSM_QTI_DEBUG=y" >> $DEFCONFIG 2>/dev/null || true
+          echo "CONFIG_QCOM_SOCINFO=y" >> $DEFCONFIG 2>/dev/null || true
+          
+          # 继续启用 icnss2 相关选项（可能已存在）
           echo "CONFIG_ICNSS2=y" >> $DEFCONFIG 2>/dev/null || true
           echo "CONFIG_ICNSS2_QMI=y" >> $DEFCONFIG 2>/dev/null || true
           echo "CONFIG_ICNSS2_QDSS=y" >> $DEFCONFIG 2>/dev/null || true
@@ -149,6 +172,20 @@ jobs:
             sed -i '/static inline int wlfw_wlan_mode_send_sync_msg/,/^}/d' drivers/soc/qcom/icnss2/qmi.h
             # 修复 icnss_dms_init 参数类型（struct icns_priv -> struct icnss_priv）
             sed -i 's/struct icns_priv \*/struct icnss_priv */g' drivers/soc/qcom/icnss2/qmi.h
+          fi
+
+          # 添加缺失的函数声明到 main.c（使用 heredoc 避免 YAML 解析问题）
+          if [ -f drivers/soc/qcom/icnss2/main.c ]; then
+            # 将函数声明写入临时文件
+            cat > /tmp/icnss_decl.c << 'EOF'
+int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv);
+int wlfw_qdss_trace_start(struct icnss_priv *priv);
+int wlfw_qdss_trace_stop(struct icnss_priv *priv, int option);
+int icnss_wlfw_qdss_data_send_sync(struct icnss_priv *priv, char *file_name, ...);
+EOF
+            # 在 main.c 开头插入临时文件内容
+            sed -i '1r /tmp/icnss_decl.c' drivers/soc/qcom/icnss2/main.c
+            rm -f /tmp/icnss_decl.c
           fi
 
       - name: 编译
@@ -170,7 +207,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             venus_gki_defconfig all
 
-      # ===== 改进：准备内核镜像，确保 Image.gz-dtb 生成 =====
+      # ===== 准备内核镜像，确保 Image.gz-dtb 生成 =====
       - name: 准备内核镜像 (生成 Image.gz-dtb)
         working-directory: kernel
         run: |
