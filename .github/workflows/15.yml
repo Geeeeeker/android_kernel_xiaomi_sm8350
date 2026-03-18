@@ -147,8 +147,9 @@ jobs:
             # 检查是否已经添加过弱符号，避免重复添加
             if ! grep -q "__weak.*get_hw_version_platform" drivers/soc/qcom/icnss2/qmi.c; then
               echo -e "\n/* Weak symbols added by build script to fix undefined references */" >> drivers/soc/qcom/icnss2/qmi.c
-              echo "int __weak get_hw_version_platform(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
-              echo "int __weak get_hw_country_version(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
+              echo "#include <linux/types.h>" >> drivers/soc/qcom/icnss2/qmi.c
+              echo "uint32_t __weak get_hw_version_platform(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
+              echo "uint32_t __weak get_hw_country_version(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
             fi
           fi
 
