@@ -124,6 +124,18 @@ jobs:
         run: |
           DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"
           
+          # 彻底禁用 KVM 和 VIRTUALIZATION
+          sed -i '/CONFIG_KVM/d' $DEFCONFIG
+          sed -i '/CONFIG_VIRTUALIZATION/d' $DEFCONFIG
+          echo "# CONFIG_KVM is not set" >> $DEFCONFIG
+          echo "# CONFIG_VIRTUALIZATION is not set" >> $DEFCONFIG
+          
+          # 彻底禁用 VFIO 及其相关选项
+          sed -i '/CONFIG_VFIO/d' $DEFCONFIG
+          sed -i '/CONFIG_VFIO_PCI/d' $DEFCONFIG
+          echo "# CONFIG_VFIO is not set" >> $DEFCONFIG
+          echo "# CONFIG_VFIO_PCI is not set" >> $DEFCONFIG
+          
           # 启用 MMU_NOTIFIER
           echo "CONFIG_MMU_NOTIFIER=y" >> $DEFCONFIG
 
