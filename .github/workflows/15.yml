@@ -142,6 +142,16 @@ jobs:
             sed -i 's/struct icns_priv \*/struct icnss_priv */g' drivers/soc/qcom/icnss2/qmi.h
           fi
 
+          # 添加弱符号定义，解决 get_hw_version_platform 和 get_hw_country_version 未定义问题
+          if [ -f drivers/soc/qcom/icnss2/qmi.c ]; then
+            # 检查是否已经添加过弱符号，避免重复添加
+            if ! grep -q "__weak.*get_hw_version_platform" drivers/soc/qcom/icnss2/qmi.c; then
+              echo -e "\n/* Weak symbols added by build script to fix undefined references */" >> drivers/soc/qcom/icnss2/qmi.c
+              echo "int __weak get_hw_version_platform(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
+              echo "int __weak get_hw_country_version(void) { return 0; }" >> drivers/soc/qcom/icnss2/qmi.c
+            fi
+          fi
+
       # ===== 修复 qcacld-3.0 驱动中的未使用函数警告 =====
       - name: 修复 qcacld-3.0 驱动中的未使用函数警告
         working-directory: kernel
