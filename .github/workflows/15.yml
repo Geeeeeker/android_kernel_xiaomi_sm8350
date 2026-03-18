@@ -125,6 +125,18 @@ jobs:
         run: |
           DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"
           
+          # 彻底禁用 KVM 和 VIRTUALIZATION
+          sed -i '/CONFIG_KVM/d' $DEFCONFIG
+          sed -i '/CONFIG_VIRTUALIZATION/d' $DEFCONFIG
+          echo "# CONFIG_KVM is not set" >> $DEFCONFIG
+          echo "# CONFIG_VIRTUALIZATION is not set" >> $DEFCONFIG
+          
+          # 彻底禁用 VFIO 及其相关选项
+          sed -i '/CONFIG_VFIO/d' $DEFCONFIG
+          sed -i '/CONFIG_VFIO_PCI/d' $DEFCONFIG
+          echo "# CONFIG_VFIO is not set" >> $DEFCONFIG
+          echo "# CONFIG_VFIO_PCI is not set" >> $DEFCONFIG
+          
           # 启用 MMU_NOTIFIER
           echo "CONFIG_MMU_NOTIFIER=y" >> $DEFCONFIG
 
@@ -140,6 +152,18 @@ jobs:
           if [ -f drivers/soc/qcom/icnss2/qmi.h ]; then
             sed -i '/static inline int wlfw_wlan_mode_send_sync_msg/,/^}/d' drivers/soc/qcom/icnss2/qmi.h
             sed -i 's/struct icns_priv \*/struct icnss_priv */g' drivers/soc/qcom/icnss2/qmi.h
+          fi
+
+          # 添加缺失的函数声明到 main.c
+          if [ -f drivers/soc/qcom/icnss2/main.c ]; then
+            cat > /tmp/icnss_decl.c << 'EOF'
+            int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv);
+            int wlfw_qdss_trace_start(struct icnss_priv *priv);
+            int wlfw_qdss_trace_stop(struct icnss_priv *priv, int option);
+            int icnss_wlfw_qdss_data_send_sync(struct icnss_priv *priv, char *file_name, ...);
+            EOF
+            sed -i '1r /tmp/icnss_decl.c' drivers/soc/qcom/icnss2/main.c
+            rm -f /tmp/icnss_decl.c
           fi
 
       # ===== 修复 qcacld-3.0 驱动中的未使用函数警告 =====
@@ -167,7 +191,53 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             venus_gki_defconfig
 
-          # 3. 确保依赖关系正确并生成最终配置
+          # 2. 进入 out 目录修改 .config
+          cd out
+
+          # 强制将所有需要的选项设为 =y（同时处理未设置和 =m 的情况）
+          sed -i \
+            -e 's/^# CONFIG_ARCH_QCOM is not set/CONFIG_ARCH_QCOM=y/' \
+            -e 's/^CONFIG_ARCH_QCOM=m/CONFIG_ARCH_QCOM=y/' \
+            -e 's/^# CONFIG_QCOM_SMEM is not set/CONFIG_QCOM_SMEM=y/' \
+            -e 's/^CONFIG_QCOM_SMEM=m/CONFIG_QCOM_SMEM=y/' \
+            -e 's/^# CONFIG_QCOM_SMD is not set/CONFIG_QCOM_SMD=y/' \
+            -e 's/^CONFIG_QCOM_SMD=m/CONFIG_QCOM_SMD=y/' \
+            -e 's/^# CONFIG_QCOM_SMP2P is not set/CONFIG_QCOM_SMP2P=y/' \
+            -e 's/^CONFIG_QCOM_SMP2P=m/CONFIG_QCOM_SMP2P=y/' \
+            -e 's/^# CONFIG_QCOM_IPC_LOGGING is not set/CONFIG_QCOM_IPC_LOGGING=y/' \
+            -e 's/^CONFIG_QCOM_IPC_LOGGING=m/CONFIG_QCOM_IPC_LOGGING=y/' \
+            -e 's/^# CONFIG_QCOM_QMI_HELPERS is not set/CONFIG_QCOM_QMI_HELPERS=y/' \
+            -e 's/^CONFIG_QCOM_QMI_HELPERS=m/CONFIG_QCOM_QMI_HELPERS=y/' \
+            -e 's/^# CONFIG_QRTR is not set/CONFIG_QRTR=y/' \
+            -e 's/^CONFIG_QRTR=m/CONFIG_QRTR=y/' \
+            -e 's/^# CONFIG_QCOM_SOCINFO is not set/CONFIG_QCOM_SOCINFO=y/' \
+            -e 's/^CONFIG_QCOM_SOCINFO=m/CONFIG_QCOM_SOCINFO=y/' \
+            -e 's/^# CONFIG_QCOM_SYSFS is not set/CONFIG_QCOM_SYSFS=y/' \
+            -e 's/^CONFIG_QCOM_SYSFS=m/CONFIG_QCOM_SYSFS=y/' \
+            -e 's/^# CONFIG_QCOM_WCNSS_CTRL is not set/CONFIG_QCOM_WCNSS_CTRL=y/' \
+            -e 's/^CONFIG_QCOM_WCNSS_CTRL=m/CONFIG_QCOM_WCNSS_CTRL=y/' \
+            -e 's/^# CONFIG_QCOM_WCNSS_CTRL_PCIE is not set/CONFIG_QCOM_WCNSS_CTRL_PCIE=y/' \
+            -e 's/^CONFIG_QCOM_WCNSS_CTRL_PCIE=m/CONFIG_QCOM_WCNSS_CTRL_PCIE=y/' \
+            -e 's/^# CONFIG_CNSS_UTILS is not set/CONFIG_CNSS_UTILS=y/' \
+            -e 's/^CONFIG_CNSS_UTILS=m/CONFIG_CNSS_UTILS=y/' \
+            -e 's/^# CONFIG_CNSS2 is not set/CONFIG_CNSS2=y/' \
+            -e 's/^CONFIG_CNSS2=m/CONFIG_CNSS2=y/' \
+            -e 's/^# CONFIG_ICNSS2 is not set/CONFIG_ICNSS2=y/' \
+            -e 's/^CONFIG_ICNSS2=m/CONFIG_ICNSS2=y/' \
+            -e 's/^# CONFIG_ICNSS2_PLATFORM is not set/CONFIG_ICNSS2_PLATFORM=y/' \
+            -e 's/^CONFIG_ICNSS2_PLATFORM=m/CONFIG_ICNSS2_PLATFORM=y/' \
+            .config
+
+          # 添加 trace 相关配置（解决 __tracepoint_pil_restart_level 未定义）
+          cat >> .config << 'EOF'
+          CONFIG_MSM_PIL=y
+          CONFIG_MSM_SSR=y
+          CONFIG_QCOM_PIL_INFO=y
+          CONFIG_MSM_SUBSYSTEM_RESTART=y
+          CONFIG_QCOM_RPROC_COMMON=y
+          EOF
+
+          # 3. 运行 olddefconfig 自动处理依赖
           make -j$(nproc --all) \
             CC="ccache clang" \
             ARCH=arm64 \
@@ -177,6 +247,11 @@ jobs:
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             olddefconfig
+
+          # 4. 调试：打印关键选项的最终状态
+          echo "===== 关键配置状态 ====="
+          grep -E "(ARCH_QCOM|QCOM_SMEM|QCOM_SMD|QCOM_SMP2P|QCOM_IPC_LOGGING|QCOM_QMI_HELPERS|QRTR|QCOM_SOCINFO|QCOM_SYSFS|QCOM_WCNSS_CTRL|QCOM_WCNSS_CTRL_PCIE|CNSS_UTILS|CNSS2|ICNSS2|ICNSS2_PLATFORM|MSM_PIL|MSM_SSR|QCOM_PIL_INFO|MSM_SUBSYSTEM_RESTART|QCOM_RPROC_COMMON)" .config
+          echo "========================="
 
       - name: 编译内核
         working-directory: kernel
