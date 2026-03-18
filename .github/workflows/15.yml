@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  AOSP_TOOLCHAIN_BRANCH: android16
-  AOSP_CLANG_VERSION: r547379
+  AOSP_TOOLCHAIN_BRANCH: android15
+  AOSP_CLANG_VERSION: r498229b
 
 jobs:
   build:
