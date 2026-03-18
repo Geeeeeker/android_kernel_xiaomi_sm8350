@@ -125,18 +125,6 @@ jobs:
         run: |
           DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"
           
-          # 彻底禁用 KVM 和 VIRTUALIZATION
-          sed -i '/CONFIG_KVM/d' $DEFCONFIG
-          sed -i '/CONFIG_VIRTUALIZATION/d' $DEFCONFIG
-          echo "# CONFIG_KVM is not set" >> $DEFCONFIG
-          echo "# CONFIG_VIRTUALIZATION is not set" >> $DEFCONFIG
-          
-          # 彻底禁用 VFIO 及其相关选项
-          sed -i '/CONFIG_VFIO/d' $DEFCONFIG
-          sed -i '/CONFIG_VFIO_PCI/d' $DEFCONFIG
-          echo "# CONFIG_VFIO is not set" >> $DEFCONFIG
-          echo "# CONFIG_VFIO_PCI is not set" >> $DEFCONFIG
-          
           # 启用 MMU_NOTIFIER
           echo "CONFIG_MMU_NOTIFIER=y" >> $DEFCONFIG
 
@@ -152,18 +140,6 @@ jobs:
           if [ -f drivers/soc/qcom/icnss2/qmi.h ]; then
             sed -i '/static inline int wlfw_wlan_mode_send_sync_msg/,/^}/d' drivers/soc/qcom/icnss2/qmi.h
             sed -i 's/struct icns_priv \*/struct icnss_priv */g' drivers/soc/qcom/icnss2/qmi.h
-          fi
-
-          # 添加缺失的函数声明到 main.c
-          if [ -f drivers/soc/qcom/icnss2/main.c ]; then
-            cat > /tmp/icnss_decl.c << 'EOF'
-            int icnss_wlfw_qdss_dnld_send_sync(struct icnss_priv *priv);
-            int wlfw_qdss_trace_start(struct icnss_priv *priv);
-            int wlfw_qdss_trace_stop(struct icnss_priv *priv, int option);
-            int icnss_wlfw_qdss_data_send_sync(struct icnss_priv *priv, char *file_name, ...);
-            EOF
-            sed -i '1r /tmp/icnss_decl.c' drivers/soc/qcom/icnss2/main.c
-            rm -f /tmp/icnss_decl.c
           fi
 
       # ===== 修复 qcacld-3.0 驱动中的未使用函数警告 =====
