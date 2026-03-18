@@ -179,7 +179,7 @@ jobs:
           # 2. 进入 out 目录修改 .config
           cd out
 
-          # 强制将所有需要的选项设为 =y（同时处理未设置和 =m 的情况）
+          # 强制启用高通平台和 QMI 相关选项
           sed -i \
             -e 's/^# CONFIG_ARCH_QCOM is not set/CONFIG_ARCH_QCOM=y/' \
             -e 's/^CONFIG_ARCH_QCOM=m/CONFIG_ARCH_QCOM=y/' \
@@ -215,38 +215,46 @@ jobs:
 
           # 添加 trace 相关配置（解决 __tracepoint_pil_restart_level 未定义）
           cat >> .config << 'EOF'
-          CONFIG_MSM_PIL=y
-          CONFIG_MSM_SSR=y
-          CONFIG_QCOM_PIL_INFO=y
-          CONFIG_MSM_SUBSYSTEM_RESTART=y
-          CONFIG_QCOM_RPROC_COMMON=y
-          EOF
+            CONFIG_MSM_PIL=y
+            CONFIG_MSM_SSR=y
+            CONFIG_QCOM_PIL_INFO=y
+            CONFIG_MSM_SUBSYSTEM_RESTART=y
+            CONFIG_QCOM_RPROC_COMMON=y
+            EOF
 
-          # 添加显示驱动相关配置（解决触摸屏模块缺失的符号）
-          cat >> .config << 'EOF'
-          # 基础显示驱动
-          CONFIG_DRM=y
-          CONFIG_DRM_MSM=y
-          CONFIG_DRM_MSM_DSI=y
-          CONFIG_DRM_MSM_DSI_PHY=y
-          CONFIG_DRM_PANEL=y
-
-          # 传统帧缓冲
-          CONFIG_FB=y
-          CONFIG_FB_MSM=y
-          CONFIG_FB_MSM_MDSS=y
-          CONFIG_FB_MSM_MDSS_DSI=y
-
-          # 小米显示扩展
-          CONFIG_MI_DISP=y
-          CONFIG_MI_DISP_FOD=y
-          CONFIG_MI_DISP_FOD_HBM=y
-          CONFIG_MI_DISP_FOD_MONITOR=y
-          CONFIG_DRM_MSM_MI_DISP=y
-
-          # 厂商通用选项
-          CONFIG_MACH_XIAOMI=y
-          EOF
+          # 使用 scripts/config 工具启用所有可能的小米显示和高通显示选项
+          # 如果 scripts/config 不存在，忽略错误
+          if [ -f ../scripts/config ]; then
+            for opt in \
+              DRM DRM_MSM DRM_MSM_DSI DRM_MSM_DSI_PHY DRM_PANEL \
+              FB FB_MSM FB_MSM_MDSS FB_MSM_MDSS_DSI \
+              MI_DISP MI_DISP_FOD MI_DISP_FOD_HBM MI_DISP_FOD_MONITOR \
+              DRM_MSM_MI_DISP FB_MSM_MI_DISP \
+              MACH_XIAOMI MACH_XIAOMI_SM8250; do
+              ../scripts/config --file .config --enable $opt || true
+            done
+          else
+            # 如果 scripts/config 不存在，直接追加（可能会被依赖处理，但试试看）
+            cat >> .config << 'EOF'
+            CONFIG_DRM=y
+            CONFIG_DRM_MSM=y
+            CONFIG_DRM_MSM_DSI=y
+            CONFIG_DRM_MSM_DSI_PHY=y
+            CONFIG_DRM_PANEL=y
+            CONFIG_FB=y
+            CONFIG_FB_MSM=y
+            CONFIG_FB_MSM_MDSS=y
+            CONFIG_FB_MSM_MDSS_DSI=y
+            CONFIG_MI_DISP=y
+            CONFIG_MI_DISP_FOD=y
+            CONFIG_MI_DISP_FOD_HBM=y
+            CONFIG_MI_DISP_FOD_MONITOR=y
+            CONFIG_DRM_MSM_MI_DISP=y
+            CONFIG_FB_MSM_MI_DISP=y
+            CONFIG_MACH_XIAOMI=y
+            CONFIG_MACH_XIAOMI_SM8250=y
+            EOF
+          fi
 
           # 3. 运行 olddefconfig 自动处理依赖
           make -j$(nproc --all) \
@@ -271,6 +279,7 @@ jobs:
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=$(date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y")
+          # 临时禁用 -Werror，避免警告终止编译
           export KBUILD_CFLAGS="-Wno-error"
           make -j$(nproc --all) \
             CC="ccache clang" \
@@ -291,6 +300,7 @@ jobs:
           ls -la out/arch/arm64/boot/
           ls -la out/arch/arm64/boot/dts/ || echo "没有 dts 目录"
           
+          # 首先尝试查找已存在的 dtb 文件
           DTB_FILES=$(find out -name "*.dtb" 2>/dev/null || true)
           if [ -z "$DTB_FILES" ]; then
             echo "未找到任何 dtb 文件，尝试编译设备树..."
@@ -303,17 +313,25 @@ jobs:
             exit 1
           fi
           
+          echo "找到以下 dtb 文件："
+          echo "$DTB_FILES"
+          
+          # 根据设备名 venus 选择 dtb 文件
           VENUS_DTB=$(echo "$DTB_FILES" | grep -E "venus|sm8250" | head -n1)
           if [ -z "$VENUS_DTB" ]; then
+            # 如果没有匹配的，取第一个 dtb
             VENUS_DTB=$(echo "$DTB_FILES" | head -n1)
             echo "警告：未找到包含 venus 或 sm8250 的 dtb 文件，使用第一个 dtb: $VENUS_DTB"
           else
             echo "找到匹配的设备树文件：$VENUS_DTB"
           fi
           
+          # 如果 Image.gz-dtb 不存在，手动创建
           if [ ! -f out/arch/arm64/boot/Image.gz-dtb ]; then
             echo "生成 Image.gz-dtb..."
+            # 压缩 Image 为 Image.gz
             gzip -c out/arch/arm64/boot/Image > out/arch/arm64/boot/Image.gz
+            # 合并
             cat out/arch/arm64/boot/Image.gz "$VENUS_DTB" > out/arch/arm64/boot/Image.gz-dtb
             echo "已生成 out/arch/arm64/boot/Image.gz-dtb"
           else
