@@ -141,6 +141,8 @@ jobs:
           export KBUILD_BUILD_USER=${{ github.repository_owner }}
           export KBUILD_BUILD_HOST=github-runner
           export KBUILD_BUILD_TIMESTAMP=$(date -u -d "@$(git log -1 --format=%at)" +"%a %b %d %H:%M:%S %Z %Y")
+          # 添加 KCFLAGS 以忽略未使用函数警告（修复 qcacld-3.0 编译错误）
+          export KCFLAGS="-Wno-unused-function"
           make -j$(nproc --all) \
             CC="ccache clang" \
             ARCH=arm64 \
@@ -149,7 +151,7 @@ jobs:
             O=out \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            venus_gki_defconfig all   # 改为 venus 的 defconfig
+            venus_gki_defconfig all
       # ===== 新增步骤：准备内核镜像（确保 Image.gz-dtb 存在）=====
       - name: 准备内核镜像 (生成 Image.gz-dtb)
         working-directory: kernel
