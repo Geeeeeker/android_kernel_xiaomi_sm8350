@@ -77,7 +77,7 @@ jobs:
       - name: 配置 LXC 和 Docker 支持
         working-directory: kernel
         run: |
-          DEFCONFIG="arch/arm64/configs/venus-qgki_defconfig"   # 改为 venus 的 defconfig
+          DEFCONFIG="arch/arm64/configs/venus_gki_defconfig"   # 改为 venus 的 defconfig
           rm -rf utils
           git clone https://github.com/tomxi1997/lxc-docker-support-for-android.git utils
           # 移除 LXC 补丁中强制选中的越权语句
