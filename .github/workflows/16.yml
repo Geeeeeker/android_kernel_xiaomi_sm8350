@@ -168,8 +168,8 @@ jobs:
             # 查找设备对应的 dtb 文件（设备名改为 venus）
             DTB_FILE=$(find out/arch/arm64/boot/dts -name "*venus*.dtb" | head -n1)   # 搜索 venus 相关 dtb
             if [ -z "$DTB_FILE" ]; then
-              # 尝试其他可能的名称（如 sm8250-venus.dtb）
-              DTB_FILE=$(find out/arch/arm64/boot/dts -name "*.dtb" | grep -E "venus|sm8250" | head -n1)
+              # 尝试其他可能的名称（如 sm8350-venus.dtb）
+              DTB_FILE=$(find out/arch/arm64/boot/dts -name "*.dtb" | grep -E "venus|sm8350" | head -n1)
             fi
             if [ -z "$DTB_FILE" ]; then
               echo "错误：找不到 venus 的设备树文件 (.dtb)"
